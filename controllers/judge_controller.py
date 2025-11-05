@@ -7,11 +7,9 @@ from utils.logger import log
 async def evaluate_qns_ans_with_judge(
     query_text: str,
     expected_ans: str,
-    ablation_config: dict = None
+    ablation_config: AblationConfig = None
 ) -> QAResultModel:
-
-    config = AblationConfig(**ablation_config) if ablation_config else None
-    graph_response = await query(query_text, ablation_config=config)
+    graph_response = await query(query_text, ablation_config=ablation_config)
 
     qapair = QueryAnswerPair(
         query=query_text,
