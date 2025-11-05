@@ -90,11 +90,25 @@ class AccuracyCheckModel(BaseModel):
         description="Explanation of why the answer is or isn't accurate")]
 
 
+class AccuracyCheckLLMModel(BaseModel):
+    """LLM-based semantic accuracy check result"""
+    is_accurate: Annotated[bool, Field(
+        description="Whether the actual answer semantically matches the expected answer")]
+    confidence: Annotated[float, Field(
+        ge=0, le=1, description="Confidence score in the accuracy judgment (0-1)")]
+    reasoning: Annotated[str, Field(
+        description="Detailed explanation of semantic comparison including paraphrasing, synonyms, or mismatches")]
+
+
 class QAEvaluationModel(BaseModel):
     groundedness_check: GroundednessCheckModel
     relevance_check: RelevanceCheckModel
     completeness_check: CompletenessCheckModel
     accuracy_check: AccuracyCheckModel
+    accuracy_check_llm: Optional[AccuracyCheckLLMModel] = Field(
+        default=None,
+        description="Optional LLM-based semantic accuracy check"
+    )
 
 
 class QAResultModel(BaseModel):

@@ -8,6 +8,7 @@ from pydantic_ai.providers.openai import OpenAIProvider
 
 from models.models import (
     AccuracyCheckModel,
+    AccuracyCheckLLMModel,
     CompletenessCheckModel,
     GroundednessCheckModel,
     QAEvaluationModel,
@@ -164,6 +165,92 @@ def accuracy_check(
     return result
 
 
+# ============================================================================
+# LLM-based Accuracy Checker (Semantic Comparison)
+# ============================================================================
+
+llm_accuracy_agent = Agent(
+    llm_model,
+    system_prompt="""You are a semantic accuracy evaluator. Your task is to compare an expected answer with an actual answer and determine if they are semantically equivalent.
+
+IMPORTANT GUIDELINES:
+1. **Paraphrasing**: Answers that convey the same meaning using different words are considered ACCURATE
+   - Example: "Naive RAG" ≈ "called Naive RAG" ≈ "Naïve RAG architecture"
+
+2. **Synonyms**: Accept synonyms and equivalent terminology
+   - Example: "multi-hop problems" ≈ "multi-step reasoning" (context dependent)
+
+3. **Partial overlap is NOT enough**: Similar words without semantic equivalence should be marked INACCURATE
+   - Example: "e5-base model" ≠ "BGE-base model" (different models, despite both containing "base")
+
+4. **Key facts must match**: Core factual claims must be present
+   - Names, numbers, technical terms should be semantically equivalent
+
+5. **Format differences are OK**: Different sentence structure or formatting is acceptable if meaning is preserved
+
+Return:
+- is_accurate: true if semantically equivalent, false otherwise
+- confidence: 0.0-1.0 representing how confident you are (0.9+ for obvious matches, 0.5-0.7 for edge cases)
+- reasoning: Explain what matched, what didn't, and why you made your judgment
+
+Be strict but fair - the actual answer doesn't need to be word-for-word identical, but it must convey the same core information.""",
+    output_type=NativeOutput(AccuracyCheckLLMModel),
+    retries=2,
+)
+
+
+async def accuracy_check_llm(
+    expected_answer: str, actual_answer: str
+) -> AccuracyCheckLLMModel:
+    """
+    LLM-based semantic accuracy checker using an LLM to compare expected vs actual answers.
+
+    Args:
+        expected_answer: The ground truth answer
+        actual_answer: The system-generated answer to evaluate
+
+    Returns:
+        AccuracyCheckLLMModel with is_accurate, confidence, and reasoning
+    """
+    log.info("accuracy_check_llm called")
+    log.info(f"expected_answer: {expected_answer[:100]}...")
+    log.info(f"actual_answer: {actual_answer[:100]}...")
+
+    prompt = f"""Compare the following two answers and determine if they are semantically equivalent:
+
+EXPECTED ANSWER:
+{expected_answer}
+
+ACTUAL ANSWER:
+{actual_answer}
+
+Evaluate if the actual answer correctly conveys the same information as the expected answer. Consider paraphrasing, synonyms, and different phrasings as acceptable if the core meaning is preserved."""
+
+    try:
+        result = await llm_accuracy_agent.run(prompt)
+        log.info(f"accuracy_check_llm returning: {result.output}")
+        return result.output
+    except ModelHTTPError as e:
+        log.error(f"LLM accuracy check failed with HTTP error: {e}")
+        # Fallback to conservative result
+        return AccuracyCheckLLMModel(
+            is_accurate=False,
+            confidence=0.0,
+            reasoning=f"LLM evaluation failed: {str(e)}"
+        )
+    except Exception as e:
+        log.error(f"LLM accuracy check failed with error: {e}")
+        return AccuracyCheckLLMModel(
+            is_accurate=False,
+            confidence=0.0,
+            reasoning=f"Evaluation error: {str(e)}"
+        )
+
+
+# ============================================================================
+# Original evaluation function
+# ============================================================================
+
 # async def evaluate_response(
 #     query_text: str, system_answer: str, evidence: List[Dict[str, Any]]
 # ) -> Dict[str, Any]:
@@ -220,6 +307,20 @@ Please call all four tools to complete the evaluation."""
             f"comp={evaluation.completeness_check.score:.3f} | "
             f"accurate={evaluation.accuracy_check.is_accurate}"
         )
+
+        # Also run LLM-based accuracy check
+        log.info("Running LLM-based accuracy check...")
+        llm_accuracy = await accuracy_check_llm(
+            qa_pair.expected_answer,
+            qa_pair.actual_answer
+        )
+        evaluation.accuracy_check_llm = llm_accuracy
+        log.info(
+            f"LLM accuracy result: accurate={llm_accuracy.is_accurate} | "
+            f"confidence={llm_accuracy.confidence:.3f} | "
+            f"reasoning={llm_accuracy.reasoning[:100]}..."
+        )
+
     except ModelHTTPError as e:
         log.debug(e)
         raise HTTPException(status_code=500, detail=str(e))
@@ -227,4 +328,4 @@ Please call all four tools to complete the evaluation."""
         log.error(f"Unexpected error in evaluate_response: {e}")
         log.error(f"Error type: {type(e)}")
         raise HTTPException(status_code=500, detail=str(e))
-    return result.output
+    return evaluation
