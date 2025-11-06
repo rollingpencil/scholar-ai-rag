@@ -30,15 +30,21 @@ CRITICAL STOPPING RULES - YOU MUST FOLLOW THESE:
 5. NEVER call the same tool with the same or similar parameters more than once
 
 OUTPUT FORMAT REQUIREMENTS:
-- 'reasoning': Show your reasoning process. If using graph traversal, show path as "Node1 (Type)" -> "Node2 (Type)"
-- 'answer': Natural language answer to the question. BE CONCISE - provide direct answers without unnecessary elaboration.
-- 'evidence': List of actual retrieved text content that supports your answer. Include:
-  * Content.description text from Content nodes
-  * Paper summaries from Paper nodes
-  * Dataset/Method/Model descriptions
-  * Any other retrieved text that you used to formulate the answer
-  Example: ["The paper states that Naive RAG uses BM25...", "Content chunk mentions affiliation: Cleveland State University..."]
-- If no information found, clearly state that in the answer and leave evidence empty or null
+You MUST return a JSON object with three fields:
+
+1. 'reasoning': Show your reasoning process. If using graph traversal, show path as "Node1 (Type)" -> "Node2 (Type)"
+
+2. 'answer': Natural language answer to the question. BE CONCISE - provide direct answers without unnecessary elaboration.
+
+3. 'evidence': **CRITICAL - You MUST populate this field!** A list of actual retrieved text snippets that support your answer.
+   - Extract relevant text from Content.description fields
+   - Include paper summaries from Paper nodes
+   - Include descriptions from Dataset/Method/Model nodes
+   - Copy the ACTUAL TEXT you retrieved, not summaries
+   - Example: ["Naive RAG is characterized by a simple retrieve-read workflow using keyword-based retrieval like TF-IDF and BM25", "The affiliation listed is: Department of Computer Science, Cleveland State University"]
+   - If no information found, use empty list: []
+
+**IMPORTANT**: The evidence field is used to verify your answer is grounded in retrieved data. Always populate it with actual text from your tool results!
 
 ANSWER STYLE GUIDELINES:
 - ✅ CONCISE: Answer the question directly and succinctly
@@ -85,8 +91,11 @@ Step 1: Determine what type of query you need:
    a) **For questions about author affiliations, detailed facts, or specific information from paper content:**
       - Use vector_search on 'content_embedding_index' with your specific question to find relevant Content chunks
       - The answer will be in the Content node's 'description' field
+      - **IMPORTANT**: Copy the 'description' text to the 'evidence' field!
       - Example: "What is the affiliation of author X in paper Y?" → vector_search("affiliation of Aditi Singh paper 2501.09136v3", "content_embedding_index", top_k=5)
+        Then in your output: evidence = [node['description'] for each relevant result]
       - Example: "Which author is from The Davey Tree Expert Company?" → vector_search("The Davey Tree Expert Company author affiliation", "content_embedding_index", top_k=5)
+        Then extract the actual text mentioning the affiliation
 
    b) **For simple graph structure queries with EXACT entity names/IDs:**
       - If you have the exact Paper ID, use query_neo4j with exact matches
@@ -155,6 +164,8 @@ Step 4: STOP and return your answer based on the vector search results
    - Extract information from node properties (especially 'description' field for Content nodes)
    - Summarize the information found in the 'answer' field
    - Explain what you found in the 'reasoning' field
+   - **CRITICAL**: Copy the actual 'description' or 'summary' text from retrieved nodes to the 'evidence' field!
+     Example: If you got Content nodes, use: evidence = [node['description'] for top results]
 
 Remember: Vector indexes find SIMILAR entities (fuzzy matching). You only have vector search - no graph traversal available!
 """
@@ -198,6 +209,8 @@ Step 3: STOP and return your answer based on the query results
    - Show the traversal path in 'reasoning' if applicable
    - Extract relevant details from Content.description fields
    - Provide natural language answer in 'answer' field
+   - **CRITICAL**: Copy Content.description text and other retrieved data to the 'evidence' field!
+     Example: If you queried Content nodes, use: evidence = [each c.description value returned]
 
 Remember: No vector search available. Query Content nodes with CONTAINS/regex to find affiliations and facts!
 """
