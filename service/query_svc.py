@@ -31,8 +31,26 @@ CRITICAL STOPPING RULES - YOU MUST FOLLOW THESE:
 
 OUTPUT FORMAT REQUIREMENTS:
 - 'reasoning': Show your reasoning process. If using graph traversal, show path as "Node1 (Type)" -> "Node2 (Type)"
-- 'answer': Natural language answer to the question
-- If no information found, clearly state that in the answer
+- 'answer': Natural language answer to the question. BE CONCISE - provide direct answers without unnecessary elaboration.
+- 'evidence': List of actual retrieved text content that supports your answer. Include:
+  * Content.description text from Content nodes
+  * Paper summaries from Paper nodes
+  * Dataset/Method/Model descriptions
+  * Any other retrieved text that you used to formulate the answer
+  Example: ["The paper states that Naive RAG uses BM25...", "Content chunk mentions affiliation: Cleveland State University..."]
+- If no information found, clearly state that in the answer and leave evidence empty or null
+
+ANSWER STYLE GUIDELINES:
+- ✅ CONCISE: Answer the question directly and succinctly
+- ✅ If asked "What is X?", answer with "X is [brief definition]" or just the name/value
+- ✅ If asked "Which/Who?", provide the specific name or entity without lengthy explanations
+- ✅ Match the brevity of the question - short questions deserve short answers
+- ❌ AVOID: Long-winded explanations, unnecessary context, or restating the question
+- ❌ AVOID: Phrases like "Based on the information retrieved..." or "The system found..."
+- Example:
+  - Question: "What embedding model was used?"
+  - GOOD: "e5-base"
+  - BAD: "The embedding model used in the experiments, as retrieved from the content, is e5-base, which was selected for its performance characteristics."
 
 WHAT NOT TO DO (violations will waste resources):
 - ❌ Making more than 5 tool calls
@@ -40,6 +58,7 @@ WHAT NOT TO DO (violations will waste resources):
 - ❌ Calling tools "just to be thorough" when you already have an answer
 - ❌ Making separate queries for each piece of information instead of one comprehensive query
 - ❌ Continuing to search after finding relevant information
+- ❌ Providing verbose answers when a brief response suffices
 """
 
 NEO4J_QUERY_SYSTEM_PROMPT_FULL = f"""
@@ -205,6 +224,10 @@ class GraphQueryResult(BaseModel):
         description="The reasoning process including traversal hops in format: 'Node1 (Type)' -> 'Node2 (Type)' -> 'Node3 (Type)'"
     )
     answer: str = Field(description="Natural language answer to the question")
+    evidence: Optional[list[str]] = Field(
+        default=None,
+        description="List of retrieved text snippets/content that support the answer. Include actual content from Content nodes, paper summaries, or other retrieved data."
+    )
 
 
 _query_cache: dict[str, tuple[list[dict[str, Any]], float]] = {}

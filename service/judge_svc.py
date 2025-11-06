@@ -276,6 +276,20 @@ async def evaluate_response(qa_pair: QueryAnswerPair) -> QAEvaluationModel:
     log.info(f"Actual reasoning: {qa_pair.actual_reasoning}")
 
     # Construct a comprehensive prompt with all evaluation data
+    # Build evidence list from actual retrieved content
+    evidence_list = []
+    if qa_pair.actual_evidence:
+        for ev_text in qa_pair.actual_evidence:
+            # Escape quotes and newlines for JSON safety, limit length
+            escaped = ev_text.replace('"', '\\"').replace('\n', ' ')[:500]
+            evidence_list.append(f'{{"text": "{escaped}"}}')
+    else:
+        # Fallback to reasoning if no evidence provided
+        reasoning_escaped = qa_pair.actual_reasoning.replace('"', '\\"').replace('\n', ' ')[:500]
+        evidence_list.append(f'{{"text": "{reasoning_escaped}"}}')
+
+    evidence_str = ", ".join(evidence_list)
+
     prompt = f"""Please evaluate the quality of the following response to a question using all four available tools:
 
 QUESTION: {qa_pair.query}
@@ -286,15 +300,17 @@ SYSTEM ANSWER: {qa_pair.actual_answer}
 
 SYSTEM REASONING: {qa_pair.actual_reasoning}
 
-Your task:
-1. Use the groundedness_check tool to evaluate how well the system answer is supported by evidence
-2. Use the relevance_check tool to evaluate how relevant the system answer is to the question
-3. Use the completeness_check tool to evaluate how complete the system answer is
-4. Use the accuracy_check tool to compare the system answer against the expected answer
+Your task - call each tool with these exact parameters:
 
-For the groundedness_check tool, since no specific evidence is provided, use a placeholder empty list for the evidence parameter.
+1. groundedness_check(system_answer=SYSTEM ANSWER, evidence=[{evidence_str}])
 
-Please call all four tools to complete the evaluation."""
+2. relevance_check(query_text=QUESTION, system_answer=SYSTEM ANSWER)
+
+3. completeness_check(query_text=QUESTION, system_answer=SYSTEM ANSWER)
+
+4. accuracy_check(expected_answer=EXPECTED ANSWER, actual_answer=SYSTEM ANSWER)
+
+Call all four tools now."""
 
     try:
         log.info("Calling judge agent with proper prompt...")

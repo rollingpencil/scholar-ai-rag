@@ -49,6 +49,10 @@ class QueryAnswerPair(BaseModel):
         str, Field(
             min_length=1, description="Natural language answer to the question")
     ]
+    actual_evidence: Optional[list[str]] = Field(
+        default=None,
+        description="List of retrieved text snippets that support the answer"
+    )
 
 
 class GroundednessCheckModel(BaseModel):
